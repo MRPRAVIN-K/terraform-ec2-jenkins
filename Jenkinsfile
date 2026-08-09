@@ -1,21 +1,44 @@
 pipeline {
-    agent any
+    agent {
+        label 'dynamic-agent'
+    }
+
     stages {
         stage('Checkout') {
             steps {
-                echo 'Code checkout झालं'
+                echo 'Code checked out successfully'
+                checkout scm
             }
         }
+
         stage('Build') {
             steps {
-                echo 'Build स्टेज चालू आहे'
+                echo 'Build stage started'
+                sh 'hostname'
+                sh 'whoami'
+                sh 'pwd'
                 sh 'ls -la'
             }
         }
+
         stage('Test') {
             steps {
-                echo 'Test स्टेज चालू आहे'
+                echo 'Test stage completed successfully'
             }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline execution finished'
+        }
+
+        success {
+            echo 'Pipeline completed successfully'
+        }
+
+        failure {
+            echo 'Pipeline failed'
         }
     }
 }
