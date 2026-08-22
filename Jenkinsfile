@@ -45,112 +45,115 @@ pipeline {
 
 
         stage('Install Required Tools') {
-            steps {
-                sh '''
-                    set -e
+    steps {
+        sh '''
+            set -e
 
-                    echo "======================================"
-                    echo "INSTALL REQUIRED TOOLS"
-                    echo "======================================"
+            echo "======================================"
+            echo "INSTALL REQUIRED TOOLS"
+            echo "======================================"
 
-                    echo "Waiting for Ubuntu package manager..."
+            wait_for_apt() {
 
-                    for i in {1..30}; do
+                echo "Checking APT/DPKG lock..."
 
-                        if sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-                           sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-                           sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+                for i in {1..60}; do
 
-                            echo "APT/DPKG is currently busy..."
-                            echo "Waiting 10 seconds..."
-                            sleep 10
+                    if sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+                       sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+                       sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
 
-                        else
-
-                            echo "APT/DPKG lock is available."
-                            break
-
-                        fi
-
-                        if [ "$i" -eq 30 ]; then
-                            echo "ERROR: APT/DPKG lock is still busy after 5 minutes."
-                            exit 1
-                        fi
-
-                    done
-
-                    echo "Updating package lists..."
-
-                    sudo apt-get update -y
-
-                    echo "Installing required packages..."
-
-                    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                        wget \
-                        unzip \
-                        curl \
-                        software-properties-common \
-                        gnupg \
-                        lsb-release \
-                        ansible
-
-                    echo "======================================"
-                    echo "CHECKING ANSIBLE"
-                    echo "======================================"
-
-                    ansible --version
-
-                    echo "======================================"
-                    echo "CHECKING TERRAFORM"
-                    echo "======================================"
-
-                    if command -v terraform >/dev/null 2>&1; then
-
-                        echo "Terraform already installed."
+                        echo "APT/DPKG is busy..."
+                        echo "Waiting 5 seconds..."
+                        sleep 5
 
                     else
 
-                        echo "Terraform not found. Installing..."
-
-                        TERRAFORM_VERSION="1.13.3"
-
-                        cd /tmp
-
-                        wget -q \
-                        https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-
-                        sudo unzip -o \
-                        terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
-                        -d /usr/local/bin/
-
-                        rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                        echo "APT/DPKG lock is available."
+                        return 0
 
                     fi
 
-                    echo "Terraform version:"
-                    terraform version
+                done
 
-                    echo "======================================"
-                    echo "REQUIRED TOOLS READY"
-                    echo "======================================"
-                '''
+                echo "ERROR: APT/DPKG remained busy for 5 minutes."
+                exit 1
             }
-        }
 
 
-        stage('Terraform Init') {
-            steps {
-                dir('terraform') {
-                    sh '''
-                        echo "======================================"
-                        echo "TERRAFORM INIT"
-                        echo "======================================"
+            echo "Waiting before apt update..."
 
-                        terraform init
-                    '''
-                }
-            }
-        }
+            wait_for_apt
+
+            echo "Updating package lists..."
+
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+
+            echo "Waiting before package installation..."
+
+            wait_for_apt
+
+            echo "Installing required packages..."
+
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                wget \
+                unzip \
+                curl \
+                software-properties-common \
+                gnupg \
+                lsb-release \
+                ansible
+
+
+            echo "======================================"
+            echo "CHECKING ANSIBLE"
+            echo "======================================"
+
+            ansible --version
+
+
+            echo "======================================"
+            echo "CHECKING TERRAFORM"
+            echo "======================================"
+
+            if command -v terraform >/dev/null 2>&1; then
+
+                echo "Terraform already installed."
+
+            else
+
+                echo "Terraform not found. Installing Terraform..."
+
+                TERRAFORM_VERSION="1.13.3"
+
+                cd /tmp
+
+                wget -q \
+                    https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+                sudo unzip -o \
+                    terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
+                    -d /usr/local/bin/
+
+                rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+            fi
+
+
+            echo "======================================"
+            echo "TERRAFORM VERSION"
+            echo "======================================"
+
+            terraform version
+
+
+            echo "======================================"
+            echo "TOOLS READY"
+            echo "======================================"
+        '''
+    }
+}
 
 
         stage('Terraform Validate') {
