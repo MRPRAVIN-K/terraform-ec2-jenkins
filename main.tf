@@ -13,7 +13,10 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Get the latest Ubuntu 24.04 LTS AMI
+# ============================================================
+# Latest Ubuntu 24.04 LTS AMI
+# ============================================================
+
 data "aws_ami" "ubuntu" {
   most_recent = true
 
@@ -40,12 +43,18 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# ============================================================
 # Default VPC
+# ============================================================
+
 data "aws_vpc" "default" {
   default = true
 }
 
-# Default subnet
+# ============================================================
+# Default Subnets
+# ============================================================
+
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -53,7 +62,10 @@ data "aws_subnets" "default" {
   }
 }
 
+# ============================================================
 # Security Group
+# ============================================================
+
 resource "aws_security_group" "jenkins_created_server" {
   name        = "jenkins-created-server-sg"
   description = "Security group for EC2 created by Jenkins and Terraform"
@@ -86,7 +98,7 @@ resource "aws_security_group" "jenkins_created_server" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Docker / application testing port
+  # Application / Docker testing
   ingress {
     description = "Application Port"
     from_port   = 8080
@@ -95,7 +107,7 @@ resource "aws_security_group" "jenkins_created_server" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Outbound
+  # Outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
@@ -109,13 +121,17 @@ resource "aws_security_group" "jenkins_created_server" {
   }
 }
 
-# EC2 instance
+# ============================================================
+# EC2 Instance
+# ============================================================
+
 resource "aws_instance" "server" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
   subnet_id = data.aws_subnets.default.ids[0]
 
+  # Existing AWS key pair
   key_name = var.key_name
 
   vpc_security_group_ids = [
