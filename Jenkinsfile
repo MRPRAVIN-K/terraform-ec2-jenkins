@@ -118,7 +118,19 @@ pipeline {
         '''
     }
 }
+stage('Terraform Init') {
+    steps {
+        dir('terraform') {
+            sh '''
+                echo "======================================"
+                echo "TERRAFORM INIT"
+                echo "======================================"
 
+                terraform init
+            '''
+        }
+    }
+}
         stage('Terraform Validate') {
             steps {
                 dir('terraform') {
