@@ -44,7 +44,7 @@ pipeline {
         }
 
 
-        stage('Install Required Tools') {
+ stage('Install Required Tools') {
     steps {
         sh '''
             set -e
@@ -53,50 +53,18 @@ pipeline {
             echo "INSTALL REQUIRED TOOLS"
             echo "======================================"
 
-            wait_for_apt() {
-
-                echo "Checking APT/DPKG lock..."
-
-                for i in {1..60}; do
-
-                    if sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-                       sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-                       sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
-
-                        echo "APT/DPKG is busy..."
-                        echo "Waiting 5 seconds..."
-                        sleep 5
-
-                    else
-
-                        echo "APT/DPKG lock is available."
-                        return 0
-
-                    fi
-
-                done
-
-                echo "ERROR: APT/DPKG remained busy for 5 minutes."
-                exit 1
-            }
-
-
-            echo "Waiting before apt update..."
-
-            wait_for_apt
+            echo "Waiting 20 seconds for Ubuntu startup..."
+            sleep 20
 
             echo "Updating package lists..."
 
-            sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-
-
-            echo "Waiting before package installation..."
-
-            wait_for_apt
+            sudo DEBIAN_FRONTEND=noninteractive \
+                apt-get -o DPkg::Lock::Timeout=300 update -y
 
             echo "Installing required packages..."
 
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            sudo DEBIAN_FRONTEND=noninteractive \
+                apt-get -o DPkg::Lock::Timeout=300 install -y \
                 wget \
                 unzip \
                 curl \
@@ -105,13 +73,11 @@ pipeline {
                 lsb-release \
                 ansible
 
-
             echo "======================================"
             echo "CHECKING ANSIBLE"
             echo "======================================"
 
             ansible --version
-
 
             echo "======================================"
             echo "CHECKING TERRAFORM"
@@ -140,21 +106,18 @@ pipeline {
 
             fi
 
-
             echo "======================================"
             echo "TERRAFORM VERSION"
             echo "======================================"
 
             terraform version
 
-
             echo "======================================"
-            echo "TOOLS READY"
+            echo "REQUIRED TOOLS READY"
             echo "======================================"
         '''
     }
 }
-
 
         stage('Terraform Validate') {
             steps {
