@@ -131,6 +131,32 @@ stage('Terraform Init') {
         }
     }
 }
+        stage('Debug Terraform Files') {
+    steps {
+        dir('terraform') {
+            sh '''
+                echo "======================================"
+                echo "TERRAFORM FILES"
+                echo "======================================"
+
+                pwd
+
+                echo "----- FILE LIST -----"
+                ls -la
+
+                echo "----- main.tf -----"
+                cat main.tf
+
+                echo "----- outputs.tf -----"
+                cat outputs.tf
+
+                echo "----- Terraform Resources -----"
+                grep -R 'resource "aws_instance"' .
+                grep -R 'data "aws_ami"' .
+            '''
+        }
+    }
+}
         stage('Terraform Validate') {
             steps {
                 dir('terraform') {
