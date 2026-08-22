@@ -225,48 +225,48 @@ pipeline {
         }
 
 
-        stage('Wait For SSH') {
-            steps {
-                script {
+       stage('Wait For SSH') {
+    steps {
+        script {
 
-                    echo "Waiting for SSH on ${env.EC2_PUBLIC_IP}"
+            echo "Waiting for SSH on ${env.EC2_PUBLIC_IP}"
 
-                    timeout(time: 5, unit: 'MINUTES') {
+            timeout(time: 5, unit: 'MINUTES') {
 
-                        waitUntil {
+                waitUntil {
 
-                            def result = sh(
-                                script: """
-                                    ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
+                    def result
 
-                                    ssh \
-                                    -o ConnectTimeout=5 \
-                                    -o StrictHostKeyChecking=no \
-                                    ubuntu@${env.EC2_PUBLIC_IP} \
-                                    'echo SSH connection successful'
-                                """,
-                                returnStatus: true
-                            )
+                    sshagent(credentials: ['Ogust-26']) {
 
-                            if (result == 0) {
+                        result = sh(
+                            script: """
+                                ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-                                echo "SSH connection successful"
-
-                                return true
-
-                            }
-
-                            echo "EC2 SSH not ready yet..."
-                            sleep 10
-
-                            return false
-                        }
+                                ssh \
+                                -o ConnectTimeout=5 \
+                                -o StrictHostKeyChecking=no \
+                                ubuntu@${env.EC2_PUBLIC_IP} \
+                                'echo SSH connection successful'
+                            """,
+                            returnStatus: true
+                        )
                     }
+
+                    if (result == 0) {
+                        echo "SSH connection successful"
+                        return true
+                    }
+
+                    echo "EC2 SSH not ready yet..."
+                    sleep 10
+
+                    return false
                 }
             }
         }
-
-
+    }
+}
         stage('Create Ansible Inventory') {
             steps {
 
