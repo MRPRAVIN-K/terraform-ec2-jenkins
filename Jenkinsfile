@@ -1,7 +1,7 @@
 pipeline {
 
     agent {
-        label 'aws-ec2'
+        label 'dynamic-agent'
     }
 
     environment {
