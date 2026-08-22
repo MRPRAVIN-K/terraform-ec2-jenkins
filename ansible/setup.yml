@@ -1,0 +1,81 @@
+---
+- name: Configure Jenkins created EC2 server
+  hosts: server
+  become: true
+  gather_facts: true
+
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade installed packages
+      apt:
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-21-jdk
+          - docker.io
+          - curl
+          - unzip
+          - git
+          - ca-certificates
+          - apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Enable Docker service
+      systemd:
+        name: docker
+        enabled: yes
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Verify Java installation
+      command: java -version
+      register: java_version
+      changed_when: false
+
+    - name: Display Java version
+      debug:
+        msg: "{{ java_version.stderr_lines }}"
+
+    - name: Verify Docker installation
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Display Docker version
+      debug:
+        msg: "{{ docker_version.stdout }}"
+
+    - name: Verify Docker service
+      command: systemctl is-active docker
+      register: docker_status
+      changed_when: false
+
+    - name: Display Docker status
+      debug:
+        msg: "Docker status: {{ docker_status.stdout }}"
+
+    - name: Display server information
+      debug:
+        msg:
+          - "Hostname: {{ ansible_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Private IP: {{ ansible_default_ipv4.address }}"
+          - "Java installed successfully"
+          - "Docker installed successfully"
