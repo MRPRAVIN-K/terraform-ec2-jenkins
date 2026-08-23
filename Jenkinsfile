@@ -4,14 +4,16 @@ pipeline {
         label 'dynamic-agent'
     }
 
-    parameters {
-        booleanParam(
-            name: 'DESTROY_AFTER_BUILD',
-            defaultValue: false,
-            description: 'Destroy the Terraform EC2 after Ansible configuration and verification'
-        )
-    }
-
+   parameters {
+    choice(
+        name: 'ACTION',
+        choices: [
+            'BUILD',
+            'BUILD_AND_DESTROY'
+        ],
+        description: 'Select BUILD to create and keep the EC2, or BUILD_AND_DESTROY to create and delete it after verification.'
+    )
+}
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
         TF_IN_AUTOMATION = 'true'
