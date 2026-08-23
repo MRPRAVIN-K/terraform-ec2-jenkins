@@ -4,26 +4,29 @@ pipeline {
         label 'dynamic-agent'
     }
 
-   parameters {
-    choice(
-        name: 'ACTION',
-        choices: [
-            'BUILD',
-            'DESTROY'
-        ],
-        description: 'Select BUILD to create and keep the EC2, or BUILD_AND_DESTROY to create and delete it after verification.'
-    )
-}
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: [
+                'BUILD',
+                'DESTROY'
+            ],
+            description: 'Select BUILD to create and keep the EC2, or DESTROY to create and delete it after verification.'
+        )
+    }
+
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
         TF_IN_AUTOMATION = 'true'
+        DOCKER_IMAGE_NAME = 'dynamic-ec2-app'
+        DOCKER_IMAGE_TAG = 'latest'
     }
 
     stages {
 
         stage('Check Agent') {
             steps {
-                echo 'Running Terraform and Ansible from Jenkins dynamic EC2 agent'
+                echo 'Running Terraform, Docker, ECR and Ansible from Jenkins dynamic EC2 agent'
 
                 sh '''
                     echo "======================================"
@@ -46,119 +49,147 @@ pipeline {
         }
 
 
- stage('Install Required Tools') {
-    steps {
-        sh '''
-            set -e
+        stage('Install Required Tools') {
+            steps {
+                sh '''
+                    set -e
 
-            echo "======================================"
-            echo "INSTALL REQUIRED TOOLS"
-            echo "======================================"
+                    echo "======================================"
+                    echo "INSTALL REQUIRED TOOLS"
+                    echo "======================================"
 
-            echo "Waiting 20 seconds for Ubuntu startup..."
-            sleep 20
+                    echo "Waiting for Ubuntu startup..."
+                    sleep 20
 
-            echo "Updating package lists..."
+                    echo "Updating package lists..."
 
-            sudo DEBIAN_FRONTEND=noninteractive \
-                apt-get -o DPkg::Lock::Timeout=300 update -y
+                    sudo DEBIAN_FRONTEND=noninteractive \
+                        apt-get -o DPkg::Lock::Timeout=300 update -y
 
-            echo "Installing required packages..."
+                    echo "Installing required packages..."
 
-            sudo DEBIAN_FRONTEND=noninteractive \
-                apt-get -o DPkg::Lock::Timeout=300 install -y \
-                wget \
-                unzip \
-                curl \
-                software-properties-common \
-                gnupg \
-                lsb-release \
-                ansible
+                    sudo DEBIAN_FRONTEND=noninteractive \
+                        apt-get -o DPkg::Lock::Timeout=300 install -y \
+                        wget \
+                        unzip \
+                        curl \
+                        software-properties-common \
+                        gnupg \
+                        lsb-release \
+                        jq \
+                        awscli \
+                        ansible \
+                        docker.io
 
-            echo "======================================"
-            echo "CHECKING ANSIBLE"
-            echo "======================================"
+                    echo "======================================"
+                    echo "STARTING DOCKER"
+                    echo "======================================"
 
-            ansible --version
+                    sudo systemctl enable --now docker
 
-            echo "======================================"
-            echo "CHECKING TERRAFORM"
-            echo "======================================"
+                    echo "Docker status:"
+                    sudo systemctl is-active docker
 
-            if command -v terraform >/dev/null 2>&1; then
+                    echo "Docker version:"
+                    sudo docker --version
 
-                echo "Terraform already installed."
+                    echo "======================================"
+                    echo "CHECKING ANSIBLE"
+                    echo "======================================"
 
-            else
+                    ansible --version
 
-                echo "Terraform not found. Installing Terraform..."
+                    echo "======================================"
+                    echo "CHECKING AWS CLI"
+                    echo "======================================"
 
-                TERRAFORM_VERSION="1.13.3"
+                    aws --version
 
-                cd /tmp
+                    echo "======================================"
+                    echo "CHECKING TERRAFORM"
+                    echo "======================================"
 
-                wget -q \
-                    https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                    if command -v terraform >/dev/null 2>&1; then
 
-                sudo unzip -o \
-                    terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
-                    -d /usr/local/bin/
+                        echo "Terraform already installed."
 
-                rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                    else
 
-            fi
+                        echo "Terraform not found. Installing Terraform..."
 
-            echo "======================================"
-            echo "TERRAFORM VERSION"
-            echo "======================================"
+                        TERRAFORM_VERSION="1.13.3"
 
-            terraform version
+                        cd /tmp
 
-            echo "======================================"
-            echo "REQUIRED TOOLS READY"
-            echo "======================================"
-        '''
-    }
-}
-stage('Terraform Init') {
-    steps {
-        dir('terraform') {
-            sh '''
-                echo "======================================"
-                echo "TERRAFORM INIT"
-                echo "======================================"
+                        wget -q \
+                            https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
-                terraform init
-            '''
+                        sudo unzip -o \
+                            terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
+                            -d /usr/local/bin/
+
+                        rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+                    fi
+
+                    echo "======================================"
+                    echo "TERRAFORM VERSION"
+                    echo "======================================"
+
+                    terraform version
+
+                    echo "======================================"
+                    echo "REQUIRED TOOLS READY"
+                    echo "======================================"
+                '''
+            }
         }
-    }
-}
+
+
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        echo "======================================"
+                        echo "TERRAFORM INIT"
+                        echo "======================================"
+
+                        terraform init
+                    '''
+                }
+            }
+        }
+
+
         stage('Debug Terraform Files') {
-    steps {
-        dir('terraform') {
-            sh '''
-                echo "======================================"
-                echo "TERRAFORM FILES"
-                echo "======================================"
+            steps {
+                dir('terraform') {
+                    sh '''
+                        echo "======================================"
+                        echo "TERRAFORM FILES"
+                        echo "======================================"
 
-                pwd
+                        pwd
 
-                echo "----- FILE LIST -----"
-                ls -la
+                        echo "----- FILE LIST -----"
+                        ls -la
 
-                echo "----- main.tf -----"
-                cat main.tf
+                        echo "----- main.tf -----"
+                        cat main.tf
 
-                echo "----- outputs.tf -----"
-                cat outputs.tf
+                        echo "----- outputs.tf -----"
+                        cat outputs.tf
 
-                echo "----- Terraform Resources -----"
-                grep -R 'resource "aws_instance"' .
-                grep -R 'data "aws_ami"' .
-            '''
+                        echo "----- Terraform Resources -----"
+                        grep -R 'resource "aws_instance"' .
+                        grep -R 'data "aws_ami"' .
+                        grep -R 'resource "aws_ecr_repository"' .
+                    '''
+                }
+            }
         }
-    }
-}
+
+
         stage('Terraform Validate') {
             steps {
                 dir('terraform') {
@@ -195,7 +226,7 @@ stage('Terraform Init') {
                     sh '''
                         echo "======================================"
                         echo "BUILD STARTED"
-                        echo "Creating EC2 using Terraform"
+                        echo "Creating EC2 and ECR using Terraform"
                         echo "======================================"
 
                         terraform apply -auto-approve
@@ -205,6 +236,137 @@ stage('Terraform Init') {
                         echo "======================================"
                     '''
                 }
+            }
+        }
+
+
+        stage('Get ECR Repository') {
+            steps {
+                script {
+
+                    env.ECR_REPO = sh(
+                        script: '''
+                            cd terraform
+                            terraform output -raw ecr_repository_url
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "======================================"
+                    echo "ECR REPOSITORY"
+                    echo "======================================"
+
+                    echo "ECR Repository URL: ${env.ECR_REPO}"
+                }
+            }
+        }
+
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "DOCKER BUILD"
+                    echo "======================================"
+
+                    echo "Building Docker image..."
+
+                    sudo docker build \
+                        -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
+                        .
+
+                    echo "======================================"
+                    echo "DOCKER IMAGE CREATED"
+                    echo "======================================"
+
+                    sudo docker images
+                '''
+            }
+        }
+
+
+        stage('ECR Login') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "ECR LOGIN"
+                    echo "======================================"
+
+                    aws ecr get-login-password \
+                        --region "$AWS_DEFAULT_REGION" | \
+                    sudo docker login \
+                        --username AWS \
+                        --password-stdin "$ECR_REPO"
+
+                    echo "ECR login successful."
+                '''
+            }
+        }
+
+
+        stage('Docker Tag') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "DOCKER TAG"
+                    echo "======================================"
+
+                    sudo docker tag \
+                        ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
+                        ${ECR_REPO}:${DOCKER_IMAGE_TAG}
+
+                    echo "Docker image tagged:"
+                    echo "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
+
+                    sudo docker images
+                '''
+            }
+        }
+
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "PUSH IMAGE TO ECR"
+                    echo "======================================"
+
+                    sudo docker push \
+                        ${ECR_REPO}:${DOCKER_IMAGE_TAG}
+
+                    echo "======================================"
+                    echo "DOCKER IMAGE PUSHED SUCCESSFULLY"
+                    echo "======================================"
+                '''
+            }
+        }
+
+
+        stage('Verify ECR Image') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "VERIFY ECR IMAGE"
+                    echo "======================================"
+
+                    aws ecr describe-images \
+                        --repository-name dynamic-ec2-app \
+                        --region "$AWS_DEFAULT_REGION"
+
+                    echo "======================================"
+                    echo "ECR IMAGE VERIFIED"
+                    echo "======================================"
+                '''
             }
         }
 
@@ -231,48 +393,50 @@ stage('Terraform Init') {
         }
 
 
-       stage('Wait For SSH') {
-    steps {
-        script {
+        stage('Wait For SSH') {
+            steps {
+                script {
 
-            echo "Waiting for SSH on ${env.EC2_PUBLIC_IP}"
+                    echo "Waiting for SSH on ${env.EC2_PUBLIC_IP}"
 
-            timeout(time: 5, unit: 'MINUTES') {
+                    timeout(time: 5, unit: 'MINUTES') {
 
-                waitUntil {
+                        waitUntil {
 
-                    def result
+                            def result
 
-                    sshagent(credentials: ['Ogust-26']) {
+                            sshagent(credentials: ['Ogust-26']) {
 
-                        result = sh(
-                            script: """
-                                ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
+                                result = sh(
+                                    script: """
+                                        ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-                                ssh \
-                                -o ConnectTimeout=5 \
-                                -o StrictHostKeyChecking=no \
-                                ubuntu@${env.EC2_PUBLIC_IP} \
-                                'echo SSH connection successful'
-                            """,
-                            returnStatus: true
-                        )
+                                        ssh \
+                                        -o ConnectTimeout=5 \
+                                        -o StrictHostKeyChecking=no \
+                                        ubuntu@${env.EC2_PUBLIC_IP} \
+                                        'echo SSH connection successful'
+                                    """,
+                                    returnStatus: true
+                                )
+                            }
+
+                            if (result == 0) {
+                                echo "SSH connection successful"
+                                return true
+                            }
+
+                            echo "EC2 SSH not ready yet..."
+                            sleep 10
+
+                            return false
+                        }
                     }
-
-                    if (result == 0) {
-                        echo "SSH connection successful"
-                        return true
-                    }
-
-                    echo "EC2 SSH not ready yet..."
-                    sleep 10
-
-                    return false
                 }
             }
         }
-    }
-}
+
+
         stage('Create Ansible Inventory') {
             steps {
 
@@ -362,7 +526,7 @@ EOF
 
             when {
                 expression {
-                    return params.DESTROY_AFTER_BUILD
+                    return params.ACTION == 'DESTROY'
                 }
             }
 
@@ -378,7 +542,7 @@ EOF
 
                         echo "======================================"
                         echo "DESTROY COMPLETED"
-                        echo "EC2 SERVER DELETED"
+                        echo "EC2 SERVER AND ECR DELETED"
                         echo "======================================"
                     '''
                 }
@@ -396,16 +560,21 @@ EOF
             ==========================================
 
             EC2 created by Terraform
+            ECR repository created by Terraform
+            Docker image built successfully
+            Docker image pushed to ECR
             Ansible configuration completed
             Java 21 installed
-            Docker installed
             Docker verified
+
+            ECR Repository:
+            ${env.ECR_REPO}
 
             EC2 Public IP:
             ${env.EC2_PUBLIC_IP}
 
-            Destroy selected:
-            ${params.DESTROY_AFTER_BUILD}
+            Action selected:
+            ${params.ACTION}
 
             ==========================================
             """
