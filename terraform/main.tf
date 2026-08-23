@@ -134,6 +134,10 @@ resource "aws_instance" "server" {
   # Existing AWS key pair
   key_name = var.key_name
 
+  # IAM Instance Profile
+  # Gives the dynamic EC2 permission to push Docker images to ECR
+  iam_instance_profile = aws_iam_instance_profile.dynamic_ec2_profile.name
+
   vpc_security_group_ids = [
     aws_security_group.jenkins_created_server.id
   ]
