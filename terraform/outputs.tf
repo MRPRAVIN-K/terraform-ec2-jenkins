@@ -18,11 +18,13 @@ output "ami_id" {
   value       = data.aws_ami.ubuntu.id
 }
 
+ HEAD
 output "private_ip" {
   description = "Private IP address of the EC2 instance"
   value       = aws_instance.server.private_ip
 }
 
+ b8b1f58 (Add ECR repository output)
 output "ecr_repository_url" {
   description = "ECR repository URL"
   value       = aws_ecr_repository.app.repository_url
