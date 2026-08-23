@@ -17,11 +17,11 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
-
+        AWS_REGION = 'us-east-1'
         TF_IN_AUTOMATION = 'true'
 
         DOCKER_IMAGE_NAME = 'dynamic-ec2-app'
-        DOCKER_IMAGE_TAG  = 'latest'
+        DOCKER_IMAGE_TAG = 'latest'
     }
 
     stages {
@@ -36,6 +36,8 @@ pipeline {
                 echo 'Running Terraform, Docker, ECR and Ansible from Jenkins dynamic EC2 agent'
 
                 sh '''
+                    set -e
+
                     echo "======================================"
                     echo "CHECK AGENT"
                     echo "======================================"
@@ -50,7 +52,7 @@ pipeline {
                     pwd
 
                     echo "Java:"
-                    java -version || true
+                    java -version
                 '''
             }
         }
@@ -74,11 +76,13 @@ pipeline {
                     sleep 20
 
                     echo "======================================"
-                    echo "UPDATE PACKAGE LIST"
+                    echo "UPDATE APT"
                     echo "======================================"
 
                     sudo DEBIAN_FRONTEND=noninteractive \
-                        apt-get -o DPkg::Lock::Timeout=300 update -y
+                        apt-get \
+                        -o DPkg::Lock::Timeout=300 \
+                        update -y
 
 
                     echo "======================================"
@@ -86,15 +90,17 @@ pipeline {
                     echo "======================================"
 
                     sudo DEBIAN_FRONTEND=noninteractive \
-                        apt-get -o DPkg::Lock::Timeout=300 install -y \
+                        apt-get \
+                        -o DPkg::Lock::Timeout=300 \
+                        install -y \
                         wget \
                         unzip \
                         curl \
-                        software-properties-common \
-                        gnupg \
-                        lsb-release \
                         jq \
-                        ansible
+                        ansible \
+                        ca-certificates \
+                        gnupg \
+                        lsb-release
 
 
                     # ====================================================
@@ -113,7 +119,7 @@ pipeline {
 
                         cd /tmp
 
-                        rm -rf aws awscliv2.zip
+                        rm -f awscliv2.zip
 
                         echo "Downloading AWS CLI v2..."
 
@@ -123,15 +129,19 @@ pipeline {
 
                         echo "Extracting AWS CLI..."
 
+                        rm -rf /tmp/aws
+
                         unzip -q awscliv2.zip
 
                         echo "Installing AWS CLI..."
 
-                        sudo ./aws/install
+                        sudo /tmp/aws/install
 
-                        rm -rf aws awscliv2.zip
+                        rm -rf /tmp/aws
+                        rm -f /tmp/awscliv2.zip
 
                     fi
+
 
                     echo "AWS CLI version:"
                     aws --version
@@ -151,18 +161,43 @@ pipeline {
 
                     else
 
+                        echo "Installing Docker..."
+
+                        sudo install -m 0755 -d /etc/apt/keyrings
+
+                        sudo curl -fsSL \
+                            https://download.docker.com/linux/ubuntu/gpg \
+                            -o /etc/apt/keyrings/docker.asc
+
+                        sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+                        echo \
+                            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+                            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
                         sudo DEBIAN_FRONTEND=noninteractive \
-                            apt-get -o DPkg::Lock::Timeout=300 install -y \
-                            docker.io
+                            apt-get \
+                            -o DPkg::Lock::Timeout=300 \
+                            update -y
+
+                        sudo DEBIAN_FRONTEND=noninteractive \
+                            apt-get \
+                            -o DPkg::Lock::Timeout=300 \
+                            install -y \
+                            docker-ce \
+                            docker-ce-cli \
+                            containerd.io \
+                            docker-buildx-plugin \
+                            docker-compose-plugin
 
                     fi
+
 
                     echo "Starting Docker..."
 
                     sudo systemctl enable docker
                     sudo systemctl start docker
 
-                    echo "Docker status:"
                     sudo systemctl is-active docker
 
                     echo "Docker version:"
@@ -183,11 +218,11 @@ pipeline {
 
                     else
 
-                        echo "Terraform not found. Installing Terraform..."
-
                         TERRAFORM_VERSION="1.13.3"
 
                         cd /tmp
+
+                        echo "Downloading Terraform ${TERRAFORM_VERSION}..."
 
                         wget -q \
                             https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
@@ -200,51 +235,30 @@ pipeline {
 
                     fi
 
-                    echo "Terraform version:"
-                    terraform version
-
 
                     # ====================================================
-                    # ANSIBLE
+                    # VERIFY TOOLS
                     # ====================================================
 
                     echo "======================================"
-                    echo "CHECK ANSIBLE"
+                    echo "VERIFY TOOLS"
                     echo "======================================"
 
-                    ansible --version
-
-
-                    # ====================================================
-                    # AWS IDENTITY CHECK
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "CHECK AWS IDENTITY"
-                    echo "======================================"
-
-                    aws sts get-caller-identity
-
-
-                    # ====================================================
-                    # FINAL CHECK
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "ALL REQUIRED TOOLS READY"
-                    echo "======================================"
-
-                    echo "AWS:"
+                    echo "AWS CLI:"
                     aws --version
-
-                    echo "Terraform:"
-                    terraform version
 
                     echo "Docker:"
                     sudo docker --version
 
+                    echo "Terraform:"
+                    terraform version
+
                     echo "Ansible:"
                     ansible --version
+
+                    echo "======================================"
+                    echo "ALL REQUIRED TOOLS READY"
+                    echo "======================================"
                 '''
             }
         }
@@ -260,6 +274,8 @@ pipeline {
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "TERRAFORM INIT"
                         echo "======================================"
@@ -272,7 +288,7 @@ pipeline {
 
 
         // ============================================================
-        // DEBUG TERRAFORM FILES
+        // DEBUG TERRAFORM
         // ============================================================
 
         stage('Debug Terraform Files') {
@@ -281,6 +297,8 @@ pipeline {
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "TERRAFORM FILES"
                         echo "======================================"
@@ -296,15 +314,11 @@ pipeline {
                         echo "----- outputs.tf -----"
                         cat outputs.tf
 
-                        echo "----- Terraform Resources -----"
+                        echo "----- TERRAFORM RESOURCES -----"
 
                         grep -R 'resource "aws_instance"' . || true
-
-                        grep -R 'data "aws_ami"' . || true
-
                         grep -R 'resource "aws_ecr_repository"' . || true
-
-                        grep -R 'aws_iam_role' . || true
+                        grep -R 'resource "aws_iam_role"' . || true
                     '''
                 }
             }
@@ -321,6 +335,8 @@ pipeline {
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "TERRAFORM VALIDATE"
                         echo "======================================"
@@ -342,6 +358,8 @@ pipeline {
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "TERRAFORM PLAN"
                         echo "======================================"
@@ -357,17 +375,17 @@ pipeline {
         // TERRAFORM APPLY
         // ============================================================
 
-        stage('Terraform Apply') {
+        stage('Build Infrastructure') {
             steps {
 
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "TERRAFORM APPLY"
                         echo "======================================"
-
-                        echo "Creating EC2 and ECR..."
 
                         terraform apply -auto-approve
 
@@ -392,6 +410,7 @@ pipeline {
                     env.ECR_REPO = sh(
                         script: '''
                             cd terraform
+
                             terraform output -raw ecr_repository_url
                         ''',
                         returnStdout: true
@@ -409,6 +428,29 @@ pipeline {
 
 
         // ============================================================
+        // CHECK AWS IDENTITY
+        // ============================================================
+
+        stage('Check AWS Identity') {
+            steps {
+
+                sh '''
+                    set -e
+
+                    echo "======================================"
+                    echo "AWS IDENTITY"
+                    echo "======================================"
+
+                    aws sts get-caller-identity
+
+                    echo "AWS Region:"
+                    echo "$AWS_DEFAULT_REGION"
+                '''
+            }
+        }
+
+
+        // ============================================================
         // DOCKER BUILD
         // ============================================================
 
@@ -421,6 +463,12 @@ pipeline {
                     echo "======================================"
                     echo "DOCKER BUILD"
                     echo "======================================"
+
+                    echo "Dockerfile:"
+                    ls -l Dockerfile
+
+                    echo "index.html:"
+                    ls -l index.html
 
                     echo "Building Docker image..."
 
@@ -452,11 +500,12 @@ pipeline {
                     echo "ECR LOGIN"
                     echo "======================================"
 
-                    echo "AWS Region:"
-                    echo "$AWS_DEFAULT_REGION"
+                    AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+                        --query Account \
+                        --output text)
 
-                    echo "ECR Repository:"
-                    echo "$ECR_REPO"
+                    echo "AWS Account:"
+                    echo "$AWS_ACCOUNT_ID"
 
                     aws ecr get-login-password \
                         --region "$AWS_DEFAULT_REGION" | \
@@ -490,10 +539,10 @@ pipeline {
                         ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
                         ${ECR_REPO}:${DOCKER_IMAGE_TAG}
 
-                    echo "Docker image tagged as:"
-
+                    echo "Tagged image:"
                     echo "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
 
+                    echo "Docker images:"
                     sudo docker images
                 '''
             }
@@ -518,7 +567,7 @@ pipeline {
                         ${ECR_REPO}:${DOCKER_IMAGE_TAG}
 
                     echo "======================================"
-                    echo "DOCKER IMAGE PUSHED SUCCESSFULLY"
+                    echo "IMAGE PUSHED SUCCESSFULLY"
                     echo "======================================"
                 '''
             }
@@ -540,11 +589,12 @@ pipeline {
                     echo "======================================"
 
                     aws ecr describe-images \
-                        --repository-name dynamic-ec2-app \
+                        --repository-name "${DOCKER_IMAGE_NAME}" \
+                        --image-ids imageTag="${DOCKER_IMAGE_TAG}" \
                         --region "$AWS_DEFAULT_REGION"
 
                     echo "======================================"
-                    echo "ECR IMAGE VERIFIED"
+                    echo "ECR IMAGE VERIFIED SUCCESSFULLY"
                     echo "======================================"
                 '''
             }
@@ -563,6 +613,7 @@ pipeline {
                     env.EC2_PUBLIC_IP = sh(
                         script: '''
                             cd terraform
+
                             terraform output -raw public_ip
                         ''',
                         returnStdout: true
@@ -572,7 +623,7 @@ pipeline {
                     echo "EC2 PUBLIC IP"
                     echo "======================================"
 
-                    echo "Created EC2 Public IP:"
+                    echo "EC2 Public IP:"
                     echo "${env.EC2_PUBLIC_IP}"
                 }
             }
@@ -617,7 +668,6 @@ pipeline {
                                 echo "SSH connection successful"
 
                                 return true
-
                             }
 
                             echo "EC2 SSH not ready yet..."
@@ -640,6 +690,8 @@ pipeline {
             steps {
 
                 sh """
+                    set -e
+
                     echo "======================================"
                     echo "CREATE ANSIBLE INVENTORY"
                     echo "======================================"
@@ -650,7 +702,6 @@ ${env.EC2_PUBLIC_IP} ansible_user=ubuntu
 EOF
 
                     echo "Ansible inventory:"
-
                     cat ansible/inventory.ini
                 """
             }
@@ -692,7 +743,7 @@ EOF
 
 
         // ============================================================
-        // VERIFY SERVER
+        // VERIFY EC2 SERVER
         // ============================================================
 
         stage('Verify Server') {
@@ -701,6 +752,8 @@ EOF
                 sshagent(credentials: ['Ogust-26']) {
 
                     sh """
+                        set -e
+
                         echo "======================================"
                         echo "VERIFY SERVER"
                         echo "======================================"
@@ -719,10 +772,10 @@ EOF
                         java -version
 
                         echo "===== DOCKER ====="
-                        docker --version || sudo docker --version
+                        docker --version
 
                         echo "===== DOCKER STATUS ====="
-                        sudo systemctl is-active docker
+                        systemctl is-active docker
                         '
                     """
                 }
@@ -748,6 +801,8 @@ EOF
                 dir('terraform') {
 
                     sh '''
+                        set -e
+
                         echo "======================================"
                         echo "DESTROY STARTED"
                         echo "======================================"
@@ -758,8 +813,7 @@ EOF
                         echo "DESTROY COMPLETED"
                         echo "======================================"
 
-                        echo "EC2 SERVER DELETED"
-                        echo "ECR REPOSITORY DELETED"
+                        echo "EC2, ECR and Terraform-managed resources deleted."
                     '''
                 }
             }
@@ -780,16 +834,17 @@ EOF
             PIPELINE SUCCESS
             ==========================================
 
-            Terraform completed successfully.
+            Terraform infrastructure: SUCCESS
+            ECR repository: SUCCESS
+            Docker image build: SUCCESS
+            ECR login: SUCCESS
+            Docker push: SUCCESS
+            ECR image verification: SUCCESS
+            Ansible configuration: SUCCESS
+            EC2 verification: SUCCESS
 
-            EC2 created by Terraform
-            ECR repository created by Terraform
-            Docker image built successfully
-            Docker image pushed to ECR
-            ECR image verified
-            Ansible configuration completed
-            Java verified
-            Docker verified
+            Docker Image:
+            ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
 
             ECR Repository:
             ${env.ECR_REPO}
@@ -797,13 +852,12 @@ EOF
             EC2 Public IP:
             ${env.EC2_PUBLIC_IP}
 
-            Action selected:
+            Action:
             ${params.ACTION}
 
             ==========================================
             """
         }
-
 
         failure {
 
@@ -812,12 +866,11 @@ EOF
             PIPELINE FAILED
             ==========================================
 
-            Check the failed stage in Jenkins console.
+            Check the failed stage in Jenkins Console Output.
 
             ==========================================
             """
         }
-
 
         always {
 
