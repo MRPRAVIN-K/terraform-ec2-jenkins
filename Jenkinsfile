@@ -9,7 +9,7 @@ pipeline {
         name: 'ACTION',
         choices: [
             'BUILD',
-            'BUILD_AND_DESTROY'
+            'DESTROY'
         ],
         description: 'Select BUILD to create and keep the EC2, or BUILD_AND_DESTROY to create and delete it after verification.'
     )
