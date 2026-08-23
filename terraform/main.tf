@@ -149,3 +149,23 @@ resource "aws_instance" "server" {
     Managed = "Terraform"
   }
 }
+
+# ============================================================
+# ECR Repository
+# ============================================================
+
+resource "aws_ecr_repository" "app" {
+  name                 = "dynamic-ec2-app"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name        = "dynamic-ec2-app"
+    Project     = "Jenkins-Terraform-Ansible"
+    Environment = "jenkins"
+    Managed     = "Terraform"
+  }
+}
