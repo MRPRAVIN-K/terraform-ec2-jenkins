@@ -67,7 +67,7 @@ data "aws_subnets" "default" {
 # ============================================================
 
 resource "aws_security_group" "jenkins_created_server" {
-  name_prefix = "jenkins-created-server-sg-"
+  name        = "jenkins-created-server-sg"
   description = "Security group for EC2 created by Jenkins and Terraform"
   vpc_id      = data.aws_vpc.default.id
 
@@ -120,7 +120,6 @@ resource "aws_security_group" "jenkins_created_server" {
     Project = "Jenkins-Terraform-Ansible"
   }
 }
-
 # ============================================================
 # EC2 Instance
 # ============================================================
