@@ -370,62 +370,41 @@ pipeline {
         // TERRAFORM INIT
         // ============================================================
 
-        stage('Terraform Init') {
-            steps {
+   stage('Terraform Init') {
+    steps {
+        dir('terraform') {
+            sh '''
+                set -eux
 
-                dir('terraform') {
+                echo "======================================"
+                echo "TERRAFORM INIT"
+                echo "======================================"
 
-                    sh '''
-                        set -e
+                echo "Hostname:"
+                hostname
 
-                        echo "======================================"
-                        echo "TERRAFORM INIT"
-                        echo "======================================"
+                echo "User:"
+                whoami
 
-                        terraform init
-                    '''
-                }
-            }
+                echo "Workspace:"
+                pwd
+
+                echo "Terraform:"
+                which terraform
+                terraform version
+
+                echo "Terraform files:"
+                ls -la
+
+                echo "Running terraform init..."
+
+                terraform init -input=false
+
+                echo "Terraform init completed successfully."
+            '''
         }
-
-
-        // ============================================================
-        // DEBUG TERRAFORM
-        // ============================================================
-
-        stage('Debug Terraform Files') {
-            steps {
-
-                dir('terraform') {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "TERRAFORM FILES"
-                        echo "======================================"
-
-                        pwd
-
-                        echo "----- FILE LIST -----"
-                        ls -la
-
-                        echo "----- main.tf -----"
-                        cat main.tf
-
-                        echo "----- outputs.tf -----"
-                        cat outputs.tf
-
-                        echo "----- TERRAFORM RESOURCES -----"
-
-                        grep -R 'resource "aws_instance"' . || true
-                        grep -R 'resource "aws_ecr_repository"' . || true
-                        grep -R 'resource "aws_iam_role"' . || true
-                    '''
-                }
-            }
-        }
-
+    }
+}
 
         // ============================================================
         // TERRAFORM VALIDATE
