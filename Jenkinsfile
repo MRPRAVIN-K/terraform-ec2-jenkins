@@ -73,41 +73,96 @@ pipeline {
                     echo "======================================"
 
                     # ====================================================
-                    # WAIT FOR UBUNTU APT/DPKG STARTUP
+                    # WAIT FOR CLOUD-INIT
+                    # ====================================================
+
+                    echo "======================================"
+                    echo "WAITING FOR CLOUD-INIT"
+                    echo "======================================"
+
+                    if command -v cloud-init >/dev/null 2>&1; then
+
+                        echo "cloud-init detected."
+                        echo "Waiting for cloud-init to finish..."
+
+                        sudo cloud-init status --wait || true
+
+                        echo "cloud-init status:"
+                        sudo cloud-init status || true
+
+                    else
+
+                        echo "cloud-init command not found. Continuing..."
+
+                    fi
+
+
+                    # ====================================================
+                    # WAIT FOR APT / DPKG
                     # ====================================================
 
                     echo "======================================"
                     echo "WAITING FOR APT/DPKG"
                     echo "======================================"
 
-                    echo "Waiting for Ubuntu startup processes to finish..."
-
                     APT_READY=false
+                    i=1
 
-                    for i in {1..60}; do
+                    while [ "$i" -le 60 ]; do
 
                         if ! pgrep -x apt-get >/dev/null 2>&1 && \
                            ! pgrep -x apt >/dev/null 2>&1 && \
                            ! pgrep -x dpkg >/dev/null 2>&1 && \
-                           ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
-                           ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
-                           ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+                           ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
+                           ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
+                           ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
 
-                            echo "APT/DPKG locks are free."
+                            echo "APT/DPKG is free."
                             APT_READY=true
                             break
                         fi
 
                         echo "APT/DPKG is busy. Waiting... ($i/60)"
+
                         sleep 5
+
+                        i=$((i + 1))
+
                     done
 
+
                     if [ "$APT_READY" != "true" ]; then
-                        echo "ERROR: APT/DPKG remained locked for 5 minutes."
-                        echo "Current APT processes:"
+
+                        echo "======================================"
+                        echo "APT/DPKG LOCK TIMEOUT"
+                        echo "======================================"
+
+                        echo "APT/DPKG remained busy for 5 minutes."
+
+                        echo "Current APT/DPKG processes:"
                         ps aux | grep -E '[a]pt|[d]pkg' || true
+
+                        echo "APT locks:"
+                        sudo fuser -v \
+                            /var/lib/apt/lists/lock \
+                            /var/lib/dpkg/lock \
+                            /var/lib/dpkg/lock-frontend \
+                            2>/dev/null || true
+
                         exit 1
+
                     fi
+
+
+                    # ====================================================
+                    # CHECK / FIX DPKG
+                    # ====================================================
+
+                    echo "======================================"
+                    echo "CHECKING DPKG"
+                    echo "======================================"
+
+                    sudo dpkg --configure -a
 
 
                     # ====================================================
@@ -219,36 +274,7 @@ pipeline {
                             | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 
-                        # Make sure APT is not locked before Docker repository update
-
-                        echo "Checking APT lock before Docker repository update..."
-
-                        DOCKER_APT_READY=false
-
-                        for i in {1..60}; do
-
-                            if ! pgrep -x apt-get >/dev/null 2>&1 && \
-                               ! pgrep -x apt >/dev/null 2>&1 && \
-                               ! pgrep -x dpkg >/dev/null 2>&1 && \
-                               ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
-                               ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
-                               ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
-
-                                echo "APT/DPKG locks are free."
-                                DOCKER_APT_READY=true
-                                break
-                            fi
-
-                            echo "APT/DPKG is busy. Waiting... ($i/60)"
-                            sleep 5
-                        done
-
-                        if [ "$DOCKER_APT_READY" != "true" ]; then
-                            echo "ERROR: APT/DPKG remained locked before Docker installation."
-                            ps aux | grep -E '[a]pt|[d]pkg' || true
-                            exit 1
-                        fi
-
+                        echo "Updating APT after adding Docker repository..."
 
                         sudo DEBIAN_FRONTEND=noninteractive \
                             apt-get \
