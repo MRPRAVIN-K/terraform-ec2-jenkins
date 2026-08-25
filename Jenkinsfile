@@ -72,8 +72,47 @@ pipeline {
                     echo "INSTALL REQUIRED TOOLS"
                     echo "======================================"
 
-                    echo "Waiting for Ubuntu startup..."
-                    sleep 20
+                    # ====================================================
+                    # WAIT FOR UBUNTU APT/DPKG STARTUP
+                    # ====================================================
+
+                    echo "======================================"
+                    echo "WAITING FOR APT/DPKG"
+                    echo "======================================"
+
+                    echo "Waiting for Ubuntu startup processes to finish..."
+
+                    APT_READY=false
+
+                    for i in {1..60}; do
+
+                        if ! pgrep -x apt-get >/dev/null 2>&1 && \
+                           ! pgrep -x apt >/dev/null 2>&1 && \
+                           ! pgrep -x dpkg >/dev/null 2>&1 && \
+                           ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
+                           ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
+                           ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+
+                            echo "APT/DPKG locks are free."
+                            APT_READY=true
+                            break
+                        fi
+
+                        echo "APT/DPKG is busy. Waiting... ($i/60)"
+                        sleep 5
+                    done
+
+                    if [ "$APT_READY" != "true" ]; then
+                        echo "ERROR: APT/DPKG remained locked for 5 minutes."
+                        echo "Current APT processes:"
+                        ps aux | grep -E '[a]pt|[d]pkg' || true
+                        exit 1
+                    fi
+
+
+                    # ====================================================
+                    # UPDATE APT
+                    # ====================================================
 
                     echo "======================================"
                     echo "UPDATE APT"
@@ -82,8 +121,12 @@ pipeline {
                     sudo DEBIAN_FRONTEND=noninteractive \
                         apt-get \
                         -o DPkg::Lock::Timeout=300 \
-                        update -y
+                        update
 
+
+                    # ====================================================
+                    # INSTALL BASIC PACKAGES
+                    # ====================================================
 
                     echo "======================================"
                     echo "INSTALL BASIC PACKAGES"
@@ -175,10 +218,43 @@ pipeline {
                             "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
                             | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
+
+                        # Make sure APT is not locked before Docker repository update
+
+                        echo "Checking APT lock before Docker repository update..."
+
+                        DOCKER_APT_READY=false
+
+                        for i in {1..60}; do
+
+                            if ! pgrep -x apt-get >/dev/null 2>&1 && \
+                               ! pgrep -x apt >/dev/null 2>&1 && \
+                               ! pgrep -x dpkg >/dev/null 2>&1 && \
+                               ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
+                               ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
+                               ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+
+                                echo "APT/DPKG locks are free."
+                                DOCKER_APT_READY=true
+                                break
+                            fi
+
+                            echo "APT/DPKG is busy. Waiting... ($i/60)"
+                            sleep 5
+                        done
+
+                        if [ "$DOCKER_APT_READY" != "true" ]; then
+                            echo "ERROR: APT/DPKG remained locked before Docker installation."
+                            ps aux | grep -E '[a]pt|[d]pkg' || true
+                            exit 1
+                        fi
+
+
                         sudo DEBIAN_FRONTEND=noninteractive \
                             apt-get \
                             -o DPkg::Lock::Timeout=300 \
-                            update -y
+                            update
+
 
                         sudo DEBIAN_FRONTEND=noninteractive \
                             apt-get \
@@ -410,7 +486,6 @@ pipeline {
                     env.ECR_REPO = sh(
                         script: '''
                             cd terraform
-
                             terraform output -raw ecr_repository_url
                         ''',
                         returnStdout: true
@@ -613,7 +688,6 @@ pipeline {
                     env.EC2_PUBLIC_IP = sh(
                         script: '''
                             cd terraform
-
                             terraform output -raw public_ip
                         ''',
                         returnStdout: true
@@ -654,10 +728,10 @@ pipeline {
                                         ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
 
                                         ssh \
-                                        -o ConnectTimeout=5 \
-                                        -o StrictHostKeyChecking=no \
-                                        ubuntu@${env.EC2_PUBLIC_IP} \
-                                        'echo SSH connection successful'
+                                            -o ConnectTimeout=5 \
+                                            -o StrictHostKeyChecking=no \
+                                            ubuntu@${env.EC2_PUBLIC_IP} \
+                                            'echo SSH connection successful'
                                     """,
                                     returnStatus: true
                                 )
@@ -759,24 +833,24 @@ EOF
                         echo "======================================"
 
                         ssh \
-                        -o StrictHostKeyChecking=no \
-                        ubuntu@${env.EC2_PUBLIC_IP} \
-                        '
-                        echo "===== SERVER ====="
-                        hostname
+                            -o StrictHostKeyChecking=no \
+                            ubuntu@${env.EC2_PUBLIC_IP} \
+                            '
+                            echo "===== SERVER ====="
+                            hostname
 
-                        echo "===== OS ====="
-                        cat /etc/os-release | grep PRETTY_NAME
+                            echo "===== OS ====="
+                            cat /etc/os-release | grep PRETTY_NAME
 
-                        echo "===== JAVA ====="
-                        java -version
+                            echo "===== JAVA ====="
+                            java -version
 
-                        echo "===== DOCKER ====="
-                        docker --version
+                            echo "===== DOCKER ====="
+                            docker --version
 
-                        echo "===== DOCKER STATUS ====="
-                        systemctl is-active docker
-                        '
+                            echo "===== DOCKER STATUS ====="
+                            systemctl is-active docker
+                            '
                     """
                 }
             }
