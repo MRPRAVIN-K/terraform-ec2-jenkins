@@ -1,3 +1,4 @@
+```groovy
 pipeline {
 
     agent {
@@ -59,307 +60,50 @@ pipeline {
 
 
         // ============================================================
-        // INSTALL REQUIRED TOOLS
+        // CHECK REQUIRED TOOLS
         // ============================================================
 
-        stage('Install Required Tools') {
+        stage('Check Required Tools') {
             steps {
 
                 sh '''
                     set -e
 
                     echo "======================================"
-                    echo "INSTALL REQUIRED TOOLS"
+                    echo "CHECK REQUIRED TOOLS"
                     echo "======================================"
 
-                    # ====================================================
-                    # WAIT FOR CLOUD-INIT
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "WAITING FOR CLOUD-INIT"
-                    echo "======================================"
-
-                    if command -v cloud-init >/dev/null 2>&1; then
-
-                        echo "cloud-init detected."
-                        echo "Waiting for cloud-init to finish..."
-
-                        sudo cloud-init status --wait || true
-
-                        echo "cloud-init status:"
-                        sudo cloud-init status || true
-
-                    else
-
-                        echo "cloud-init command not found. Continuing..."
-
-                    fi
-
-
-                    # ====================================================
-                    # WAIT FOR APT / DPKG
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "WAITING FOR APT/DPKG"
-                    echo "======================================"
-
-                    APT_READY=false
-                    i=1
-
-                    while [ "$i" -le 60 ]; do
-
-                        if ! pgrep -x apt-get >/dev/null 2>&1 && \
-                           ! pgrep -x apt >/dev/null 2>&1 && \
-                           ! pgrep -x dpkg >/dev/null 2>&1 && \
-                           ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
-                           ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
-                           ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
-
-                            echo "APT/DPKG is free."
-                            APT_READY=true
-                            break
-                        fi
-
-                        echo "APT/DPKG is busy. Waiting... ($i/60)"
-
-                        sleep 5
-
-                        i=$((i + 1))
-
-                    done
-
-
-                    if [ "$APT_READY" != "true" ]; then
-
-                        echo "======================================"
-                        echo "APT/DPKG LOCK TIMEOUT"
-                        echo "======================================"
-
-                        echo "APT/DPKG remained busy for 5 minutes."
-
-                        echo "Current APT/DPKG processes:"
-                        ps aux | grep -E '[a]pt|[d]pkg' || true
-
-                        echo "APT locks:"
-                        sudo fuser -v \
-                            /var/lib/apt/lists/lock \
-                            /var/lib/dpkg/lock \
-                            /var/lib/dpkg/lock-frontend \
-                            2>/dev/null || true
-
-                        exit 1
-
-                    fi
-
-
-                    # ====================================================
-                    # CHECK / FIX DPKG
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "CHECKING DPKG"
-                    echo "======================================"
-
-                    sudo dpkg --configure -a
-
-
-                    # ====================================================
-                    # UPDATE APT
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "UPDATE APT"
-                    echo "======================================"
-
-                    sudo DEBIAN_FRONTEND=noninteractive \
-                        apt-get \
-                        -o DPkg::Lock::Timeout=300 \
-                        update
-
-
-                    # ====================================================
-                    # INSTALL BASIC PACKAGES
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "INSTALL BASIC PACKAGES"
-                    echo "======================================"
-
-                    sudo DEBIAN_FRONTEND=noninteractive \
-                        apt-get \
-                        -o DPkg::Lock::Timeout=300 \
-                        install -y \
-                        wget \
-                        unzip \
-                        curl \
-                        jq \
-                        ansible \
-                        ca-certificates \
-                        gnupg \
-                        lsb-release
-
-
-                    # ====================================================
-                    # AWS CLI V2
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "INSTALL AWS CLI V2"
-                    echo "======================================"
-
-                    if command -v aws >/dev/null 2>&1; then
-
-                        echo "AWS CLI already installed."
-
-                    else
-
-                        cd /tmp
-
-                        rm -f awscliv2.zip
-
-                        echo "Downloading AWS CLI v2..."
-
-                        curl -fsSL \
-                            "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
-                            -o awscliv2.zip
-
-                        echo "Extracting AWS CLI..."
-
-                        rm -rf /tmp/aws
-
-                        unzip -q awscliv2.zip
-
-                        echo "Installing AWS CLI..."
-
-                        sudo /tmp/aws/install
-
-                        rm -rf /tmp/aws
-                        rm -f /tmp/awscliv2.zip
-
-                    fi
-
-
-                    echo "AWS CLI version:"
-                    aws --version
-
-
-                    # ====================================================
-                    # DOCKER
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "INSTALL DOCKER"
-                    echo "======================================"
-
-                    if command -v docker >/dev/null 2>&1; then
-
-                        echo "Docker already installed."
-
-                    else
-
-                        echo "Installing Docker..."
-
-                        sudo install -m 0755 -d /etc/apt/keyrings
-
-                        sudo curl -fsSL \
-                            https://download.docker.com/linux/ubuntu/gpg \
-                            -o /etc/apt/keyrings/docker.asc
-
-                        sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-                        echo \
-                            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-                            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-
-                        echo "Updating APT after adding Docker repository..."
-
-                        sudo DEBIAN_FRONTEND=noninteractive \
-                            apt-get \
-                            -o DPkg::Lock::Timeout=300 \
-                            update
-
-
-                        sudo DEBIAN_FRONTEND=noninteractive \
-                            apt-get \
-                            -o DPkg::Lock::Timeout=300 \
-                            install -y \
-                            docker-ce \
-                            docker-ce-cli \
-                            containerd.io \
-                            docker-buildx-plugin \
-                            docker-compose-plugin
-
-                    fi
-
-
-                    echo "Starting Docker..."
-
-                    sudo systemctl enable docker
-                    sudo systemctl start docker
-
-                    sudo systemctl is-active docker
-
-                    echo "Docker version:"
-                    sudo docker --version
-
-
-                    # ====================================================
-                    # TERRAFORM
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "INSTALL TERRAFORM"
-                    echo "======================================"
-
-                    if command -v terraform >/dev/null 2>&1; then
-
-                        echo "Terraform already installed."
-
-                    else
-
-                        TERRAFORM_VERSION="1.13.3"
-
-                        cd /tmp
-
-                        echo "Downloading Terraform ${TERRAFORM_VERSION}..."
-
-                        wget -q \
-                            https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-
-                        sudo unzip -o \
-                            terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
-                            -d /usr/local/bin/
-
-                        rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-
-                    fi
-
-
-                    # ====================================================
-                    # VERIFY TOOLS
-                    # ====================================================
-
-                    echo "======================================"
-                    echo "VERIFY TOOLS"
-                    echo "======================================"
-
-                    echo "AWS CLI:"
-                    aws --version
-
-                    echo "Docker:"
-                    sudo docker --version
-
+                    echo ""
+                    echo "Java:"
+                    java -version
+
+                    echo ""
                     echo "Terraform:"
                     terraform version
 
+                    echo ""
                     echo "Ansible:"
-                    ansible --version
+                    ansible --version | head -1
 
+                    echo ""
+                    echo "AWS CLI:"
+                    aws --version
+
+                    echo ""
+                    echo "Docker:"
+                    docker --version
+
+                    echo ""
+                    echo "Git:"
+                    git --version
+
+                    echo ""
+                    echo "Docker service:"
+                    sudo systemctl is-active docker
+
+                    echo ""
                     echo "======================================"
-                    echo "ALL REQUIRED TOOLS READY"
+                    echo "ALL REQUIRED TOOLS ARE AVAILABLE"
                     echo "======================================"
                 '''
             }
@@ -370,41 +114,44 @@ pipeline {
         // TERRAFORM INIT
         // ============================================================
 
-   stage('Terraform Init') {
-    steps {
-        dir('terraform') {
-            sh '''
-                set -eux
+        stage('Terraform Init') {
+            steps {
 
-                echo "======================================"
-                echo "TERRAFORM INIT"
-                echo "======================================"
+                dir('terraform') {
 
-                echo "Hostname:"
-                hostname
+                    sh '''
+                        set -eux
 
-                echo "User:"
-                whoami
+                        echo "======================================"
+                        echo "TERRAFORM INIT"
+                        echo "======================================"
 
-                echo "Workspace:"
-                pwd
+                        echo "Hostname:"
+                        hostname
 
-                echo "Terraform:"
-                which terraform
-                terraform version
+                        echo "User:"
+                        whoami
 
-                echo "Terraform files:"
-                ls -la
+                        echo "Workspace:"
+                        pwd
 
-                echo "Running terraform init..."
+                        echo "Terraform:"
+                        which terraform
+                        terraform version
 
-                terraform init -input=false
+                        echo "Terraform files:"
+                        ls -la
 
-                echo "Terraform init completed successfully."
-            '''
+                        echo "Running terraform init..."
+
+                        terraform init -input=false
+
+                        echo "Terraform init completed successfully."
+                    '''
+                }
+            }
         }
-    }
-}
+
 
         // ============================================================
         // TERRAFORM VALIDATE
@@ -850,11 +597,20 @@ EOF
                             echo "===== JAVA ====="
                             java -version
 
+                            echo "===== TERRAFORM ====="
+                            terraform version
+
+                            echo "===== ANSIBLE ====="
+                            ansible --version | head -1
+
+                            echo "===== AWS CLI ====="
+                            aws --version
+
                             echo "===== DOCKER ====="
-                            docker --version
+                            sudo docker --version
 
                             echo "===== DOCKER STATUS ====="
-                            systemctl is-active docker
+                            sudo systemctl is-active docker
                             '
                     """
                 }
@@ -957,3 +713,4 @@ EOF
         }
     }
 }
+```
