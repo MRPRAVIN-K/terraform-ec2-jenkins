@@ -58,56 +58,85 @@ pipeline {
         }
 
 
-        // ============================================================
-        // CHECK REQUIRED TOOLS
-        // ============================================================
-
         stage('Check Required Tools') {
-            steps {
+    steps {
+        sh '''
+            set -e
 
-                sh '''
-                    set -e
+            echo "======================================"
+            echo "CHECK / INSTALL REQUIRED TOOLS"
+            echo "======================================"
 
-                    echo "======================================"
-                    echo "CHECK REQUIRED TOOLS"
-                    echo "======================================"
+            echo ""
+            echo "Java:"
+            java -version
 
-                    echo ""
-                    echo "Java:"
-                    java -version
+            echo ""
+            echo "Git:"
+            git --version
 
-                    echo ""
-                    echo "Terraform:"
-                    terraform version
+            echo ""
+            echo "AWS CLI:"
+            if command -v aws >/dev/null 2>&1; then
+                aws --version
+            else
+                echo "AWS CLI not found"
+                exit 1
+            fi
 
-                    echo ""
-                    echo "Ansible:"
-                    ansible --version | head -1
+            echo ""
+            echo "Terraform:"
+            if command -v terraform >/dev/null 2>&1; then
+                terraform version
+            else
+                echo "Terraform not found. Installing..."
 
-                    echo ""
-                    echo "AWS CLI:"
-                    aws --version
+                sudo apt-get update -y
+                sudo apt-get install -y wget unzip
 
-                    echo ""
-                    echo "Docker:"
-                    docker --version
+                TERRAFORM_VERSION="1.16.0"
 
-                    echo ""
-                    echo "Git:"
-                    git --version
+                cd /tmp
 
-                    echo ""
-                    echo "Docker service:"
-                    sudo systemctl is-active docker
+                wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
-                    echo ""
-                    echo "======================================"
-                    echo "ALL REQUIRED TOOLS ARE AVAILABLE"
-                    echo "======================================"
-                '''
-            }
-        }
+                unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
+                sudo mv terraform /usr/local/bin/terraform
+
+                sudo chmod +x /usr/local/bin/terraform
+
+                rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+                echo "Terraform installed:"
+                terraform version
+            fi
+
+            echo ""
+            echo "Docker:"
+            if command -v docker >/dev/null 2>&1; then
+                docker --version
+            else
+                echo "Docker not found"
+                exit 1
+            fi
+
+            echo ""
+            echo "Ansible:"
+            if command -v ansible >/dev/null 2>&1; then
+                ansible --version
+            else
+                echo "Ansible not found"
+                exit 1
+            fi
+
+            echo ""
+            echo "======================================"
+            echo "ALL REQUIRED TOOLS ARE READY"
+            echo "======================================"
+        '''
+    }
+}
 
         // ============================================================
         // TERRAFORM INIT
