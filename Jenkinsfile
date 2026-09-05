@@ -1,4 +1,3 @@
-```groovy
 pipeline {
 
     agent {
@@ -945,4 +944,3 @@ EOF
         }
     }
 }
-```
