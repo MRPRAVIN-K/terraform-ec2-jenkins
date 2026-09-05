@@ -125,7 +125,7 @@ resource "aws_security_group" "jenkins_created_server" {
 # ============================================================
 
 resource "aws_instance" "server" {
-  ami           = data.aws_ami.ubuntu.id
+  ami           = "ami-0d305d10799df0056"
   instance_type = var.instance_type
 
   subnet_id = data.aws_subnets.default.ids[0]
