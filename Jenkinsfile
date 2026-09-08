@@ -68,77 +68,79 @@ pipeline {
         }
 
 
+        // ============================================================
+        // CHECK / INSTALL REQUIRED TOOLS
+        // ============================================================
+
         stage('Check Required Tools') {
-    steps {
-        sh '''
-            set -e
+            steps {
+                sh '''
+                    set -e
 
-            echo "======================================"
-            echo "CHECK / INSTALL REQUIRED TOOLS"
-            echo "======================================"
+                    echo "======================================"
+                    echo "CHECK / INSTALL REQUIRED TOOLS"
+                    echo "======================================"
 
-            echo ""
-            echo "===== JAVA ====="
-            java -version
+                    echo ""
+                    echo "===== JAVA ====="
+                    java -version
 
-            echo ""
-            echo "===== GIT ====="
-            command -v git
-            git --version
+                    echo ""
+                    echo "===== APT LOCK CHECK ====="
 
-            echo ""
-            echo "===== WAIT FOR APT ====="
+                    for i in $(seq 1 60); do
 
-            for i in {1..60}; do
-                if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \
-                   ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
-                   ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
-                   ! sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
-                    echo "APT locks are free."
-                    break
-                fi
+                        if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \
+                           ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
+                           ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
+                           ! sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
 
-                echo "APT is busy. Waiting... ($i/60)"
-                sleep 5
-            done
+                            echo "APT locks are free."
+                            break
 
-            echo ""
-            echo "===== APT UPDATE ====="
-            sudo apt-get update -y
+                        fi
 
-            echo ""
-            echo "===== INSTALL BASIC TOOLS ====="
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                curl \
-                unzip \
-                wget \
-                gnupg \
-                lsb-release \
-                software-properties-common
+                        echo "APT is busy. Waiting... ($i/60)"
+                        sleep 5
 
-            echo ""
-            echo "Required tools check completed."
-        '''
-    }
-}
+                    done
+
+                    echo ""
+                    echo "===== APT UPDATE ====="
+
+                    sudo apt-get update -y
+
+                    echo ""
+                    echo "===== BASIC TOOLS ====="
+
+                    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                        curl \
+                        unzip \
+                        wget \
+                        gnupg \
+                        lsb-release \
+                        software-properties-common \
+                        git
+
                     echo ""
                     echo "===== GIT ====="
 
                     if command -v git >/dev/null 2>&1; then
                         git --version
                     else
-                        echo "Git not found. Installing..."
-                        sudo apt-get update -y
-                        sudo apt-get install -y git
-                        git --version
+                        echo "Git installation failed."
+                        exit 1
                     fi
 
 
                     echo ""
                     echo "===== CURL / UNZIP ====="
 
-                    sudo apt-get update -y
-                    sudo apt-get install -y curl unzip wget gnupg
+                    command -v curl
+                    command -v unzip
+
+                    curl --version | head -1
+                    unzip -v | head -1
 
 
                     echo ""
@@ -189,20 +191,21 @@ pipeline {
 
                         cd /tmp
 
-                        rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                        rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
                         rm -f terraform
 
                         wget -q \
-                            https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
+                            -O "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 
                         unzip -o \
-                            terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                            "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 
                         sudo mv terraform /usr/local/bin/terraform
 
                         sudo chmod +x /usr/local/bin/terraform
 
-                        rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                        rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 
                         echo "Terraform installed:"
                         terraform version
@@ -223,8 +226,7 @@ pipeline {
                         echo "Docker not found. Installing Docker..."
 
                         sudo apt-get update -y
-
-                        sudo apt-get install -y docker.io
+                        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
 
                         sudo systemctl enable docker
                         sudo systemctl start docker
@@ -239,10 +241,15 @@ pipeline {
                     echo "===== DOCKER SERVICE ====="
 
                     if sudo systemctl is-active --quiet docker; then
+
                         echo "Docker service is running"
+
                     else
+
                         echo "Docker service is not running. Starting..."
+
                         sudo systemctl start docker
+
                     fi
 
                     sudo systemctl is-active docker
@@ -261,7 +268,7 @@ pipeline {
                         echo "Ansible not found. Installing Ansible..."
 
                         sudo apt-get update -y
-                        sudo apt-get install -y ansible
+                        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ansible
 
                         echo "Ansible installed:"
                         ansible --version
@@ -332,7 +339,6 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir('terraform') {
-
                     sh '''
                         set -e
 
@@ -379,7 +385,6 @@ pipeline {
         stage('Terraform Validate') {
             steps {
                 dir('terraform') {
-
                     sh '''
                         set -e
 
@@ -404,7 +409,6 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('terraform') {
-
                     sh '''
                         set -e
 
@@ -429,7 +433,6 @@ pipeline {
         stage('Build Infrastructure') {
             steps {
                 dir('terraform') {
-
                     sh '''
                         set -e
 
@@ -457,7 +460,6 @@ pipeline {
 
         stage('Get ECR Repository') {
             steps {
-
                 script {
 
                     env.ECR_REPO = sh(
@@ -485,7 +487,6 @@ pipeline {
 
         stage('Get EC2 IP') {
             steps {
-
                 script {
 
                     env.EC2_PUBLIC_IP = sh(
@@ -512,7 +513,6 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-
                 sh '''
                     set -e
 
@@ -535,7 +535,7 @@ pipeline {
                     echo "Building Docker image..."
 
                     sudo docker build \
-                        -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
+                        -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
                         .
 
                     echo ""
@@ -555,7 +555,6 @@ pipeline {
 
         stage('ECR Login') {
             steps {
-
                 sh '''
                     set -e
 
@@ -598,7 +597,6 @@ pipeline {
 
         stage('Docker Tag') {
             steps {
-
                 sh '''
                     set -e
 
@@ -607,8 +605,8 @@ pipeline {
                     echo "======================================"
 
                     sudo docker tag \
-                        ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} \
-                        ${ECR_REPO}:${DOCKER_IMAGE_TAG}
+                        "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
+                        "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
 
                     echo "Tagged image:"
                     echo "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
@@ -628,7 +626,6 @@ pipeline {
 
         stage('Push Image to ECR') {
             steps {
-
                 sh '''
                     set -e
 
@@ -637,7 +634,7 @@ pipeline {
                     echo "======================================"
 
                     sudo docker push \
-                        ${ECR_REPO}:${DOCKER_IMAGE_TAG}
+                        "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
 
                     echo ""
                     echo "======================================"
@@ -654,7 +651,6 @@ pipeline {
 
         stage('Verify ECR Image') {
             steps {
-
                 sh '''
                     set -e
 
@@ -817,46 +813,45 @@ EOF
                         ssh \
                             -o ConnectTimeout=10 \
                             -o StrictHostKeyChecking=no \
-                            ubuntu@${env.EC2_PUBLIC_IP} \
-                            '
-                            echo "===== SERVER ====="
-                            hostname
+                            ubuntu@${env.EC2_PUBLIC_IP} '
+                                echo "===== SERVER ====="
+                                hostname
 
-                            echo ""
-                            echo "===== PRIVATE IP ====="
-                            hostname -I
+                                echo ""
+                                echo "===== PRIVATE IP ====="
+                                hostname -I
 
-                            echo ""
-                            echo "===== OS ====="
-                            grep PRETTY_NAME /etc/os-release
+                                echo ""
+                                echo "===== OS ====="
+                                grep PRETTY_NAME /etc/os-release
 
-                            echo ""
-                            echo "===== JAVA ====="
-                            java -version
+                                echo ""
+                                echo "===== JAVA ====="
+                                java -version
 
-                            echo ""
-                            echo "===== TERRAFORM ====="
-                            terraform version
+                                echo ""
+                                echo "===== TERRAFORM ====="
+                                terraform version
 
-                            echo ""
-                            echo "===== ANSIBLE ====="
-                            ansible --version | head -1
+                                echo ""
+                                echo "===== ANSIBLE ====="
+                                ansible --version | head -1
 
-                            echo ""
-                            echo "===== AWS CLI ====="
-                            aws --version
+                                echo ""
+                                echo "===== AWS CLI ====="
+                                aws --version
 
-                            echo ""
-                            echo "===== DOCKER ====="
-                            sudo docker --version
+                                echo ""
+                                echo "===== DOCKER ====="
+                                sudo docker --version
 
-                            echo ""
-                            echo "===== DOCKER STATUS ====="
-                            sudo systemctl is-active docker
+                                echo ""
+                                echo "===== DOCKER STATUS ====="
+                                sudo systemctl is-active docker
 
-                            echo ""
-                            echo "===== DOCKER CONTAINERS ====="
-                            sudo docker ps
+                                echo ""
+                                echo "===== DOCKER CONTAINERS ====="
+                                sudo docker ps
                             '
 
                         echo ""
