@@ -132,7 +132,6 @@ pipeline {
                         exit 1
                     fi
 
-
                     echo ""
                     echo "===== CURL / UNZIP ====="
 
@@ -141,7 +140,6 @@ pipeline {
 
                     curl --version | head -1
                     unzip -v | head -1
-
 
                     echo ""
                     echo "===== AWS CLI ====="
@@ -173,7 +171,6 @@ pipeline {
                         aws --version
 
                     fi
-
 
                     echo ""
                     echo "===== TERRAFORM ====="
@@ -212,7 +209,6 @@ pipeline {
 
                     fi
 
-
                     echo ""
                     echo "===== DOCKER ====="
 
@@ -226,6 +222,7 @@ pipeline {
                         echo "Docker not found. Installing Docker..."
 
                         sudo apt-get update -y
+
                         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
 
                         sudo systemctl enable docker
@@ -235,7 +232,6 @@ pipeline {
                         docker --version
 
                     fi
-
 
                     echo ""
                     echo "===== DOCKER SERVICE ====="
@@ -254,7 +250,6 @@ pipeline {
 
                     sudo systemctl is-active docker
 
-
                     echo ""
                     echo "===== ANSIBLE ====="
 
@@ -268,13 +263,13 @@ pipeline {
                         echo "Ansible not found. Installing Ansible..."
 
                         sudo apt-get update -y
+
                         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ansible
 
                         echo "Ansible installed:"
                         ansible --version
 
                     fi
-
 
                     echo ""
                     echo "======================================"
@@ -328,6 +323,55 @@ pipeline {
                     echo ""
                     echo "AWS credentials are working successfully."
                 '''
+            }
+        }
+
+
+        // ============================================================
+        // DEBUG TERRAFORM STATE
+        // ============================================================
+
+        stage('Debug Terraform State') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        set -e
+
+                        echo "======================================"
+                        echo "JENKINS TERRAFORM DEBUG"
+                        echo "======================================"
+
+                        echo ""
+                        echo "CURRENT DIRECTORY:"
+                        pwd
+
+                        echo ""
+                        echo "TERRAFORM VERSION:"
+                        terraform version
+
+                        echo ""
+                        echo "TERRAFORM WORKSPACE:"
+                        terraform workspace show
+
+                        echo ""
+                        echo "TERRAFORM STATE:"
+                        terraform state list
+
+                        echo ""
+                        echo "TERRAFORM FILES:"
+                        ls -lah
+
+                        echo ""
+                        echo "STATE FILE:"
+                        ls -lh terraform.tfstate 2>/dev/null || \
+                            echo "terraform.tfstate NOT FOUND"
+
+                        echo ""
+                        echo "======================================"
+                        echo "TERRAFORM STATE DEBUG COMPLETED"
+                        echo "======================================"
+                    '''
+                }
             }
         }
 
@@ -573,6 +617,12 @@ pipeline {
                     echo "ECR Repository:"
                     echo "$ECR_REPO"
 
+                    ECR_REGISTRY="${ECR_REPO%%/*}"
+
+                    echo ""
+                    echo "ECR Registry:"
+                    echo "$ECR_REGISTRY"
+
                     echo ""
                     echo "Logging into ECR..."
 
@@ -580,7 +630,7 @@ pipeline {
                         --region "$AWS_DEFAULT_REGION" | \
                     sudo docker login \
                         --username AWS \
-                        --password-stdin "$ECR_REPO"
+                        --password-stdin "$ECR_REGISTRY"
 
                     echo ""
                     echo "======================================"
@@ -608,6 +658,7 @@ pipeline {
                         "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" \
                         "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
 
+                    echo ""
                     echo "Tagged image:"
                     echo "${ECR_REPO}:${DOCKER_IMAGE_TAG}"
 
@@ -974,4 +1025,3 @@ EOF
         }
     }
 }
-
