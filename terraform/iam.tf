@@ -60,6 +60,8 @@ resource "aws_iam_role_policy" "ecr_push_policy" {
           "ecr:UploadLayerPart",
           "ecr:BatchGetImage",
           "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:ListImages",
           "ecr:GetDownloadUrlForLayer"
         ]
 
