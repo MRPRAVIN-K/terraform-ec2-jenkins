@@ -68,24 +68,59 @@ pipeline {
         }
 
 
-        // ============================================================
-        // INSTALL / CHECK REQUIRED TOOLS
-        // ============================================================
-
         stage('Check Required Tools') {
-            steps {
-                sh '''
-                    set -e
+    steps {
+        sh '''
+            set -e
 
-                    echo "======================================"
-                    echo "CHECK / INSTALL REQUIRED TOOLS"
-                    echo "======================================"
+            echo "======================================"
+            echo "CHECK / INSTALL REQUIRED TOOLS"
+            echo "======================================"
 
-                    echo ""
-                    echo "===== JAVA ====="
-                    java -version
+            echo ""
+            echo "===== JAVA ====="
+            java -version
 
+            echo ""
+            echo "===== GIT ====="
+            command -v git
+            git --version
 
+            echo ""
+            echo "===== WAIT FOR APT ====="
+
+            for i in {1..60}; do
+                if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \
+                   ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
+                   ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
+                   ! sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+                    echo "APT locks are free."
+                    break
+                fi
+
+                echo "APT is busy. Waiting... ($i/60)"
+                sleep 5
+            done
+
+            echo ""
+            echo "===== APT UPDATE ====="
+            sudo apt-get update -y
+
+            echo ""
+            echo "===== INSTALL BASIC TOOLS ====="
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                curl \
+                unzip \
+                wget \
+                gnupg \
+                lsb-release \
+                software-properties-common
+
+            echo ""
+            echo "Required tools check completed."
+        '''
+    }
+}
                     echo ""
                     echo "===== GIT ====="
 
