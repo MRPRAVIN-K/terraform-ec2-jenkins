@@ -4,6 +4,11 @@ pipeline {
         label 'dynamic-agent'
     }
 
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
     parameters {
         choice(
             name: 'ACTION',
@@ -32,6 +37,7 @@ pipeline {
 
         stage('Check Agent') {
             steps {
+
                 echo 'Running pipeline on Jenkins dynamic EC2 agent'
 
                 sh '''
@@ -41,6 +47,7 @@ pipeline {
                     echo "CHECK AGENT"
                     echo "======================================"
 
+                    echo ""
                     echo "Hostname:"
                     hostname
 
@@ -63,22 +70,32 @@ pipeline {
                     echo ""
                     echo "Disk:"
                     df -h /
+
+                    echo ""
+                    echo "Memory:"
+                    free -h
+
+                    echo ""
+                    echo "======================================"
+                    echo "AGENT CHECK COMPLETED"
+                    echo "======================================"
                 '''
             }
         }
 
 
         // ============================================================
-        // CHECK / INSTALL REQUIRED TOOLS
+        // CHECK REQUIRED TOOLS
         // ============================================================
 
         stage('Check Required Tools') {
             steps {
+
                 sh '''
                     set -e
 
                     echo "======================================"
-                    echo "CHECK / INSTALL REQUIRED TOOLS"
+                    echo "CHECK REQUIRED TOOLS"
                     echo "======================================"
 
                     echo ""
@@ -86,41 +103,63 @@ pipeline {
                     java -version
 
                     echo ""
-                    echo "===== APT LOCK CHECK ====="
+                    echo "===== TERRAFORM ====="
 
-                    for i in $(seq 1 60); do
+                    if command -v terraform >/dev/null 2>&1; then
+                        terraform version
+                    else
+                        echo "ERROR: Terraform is NOT installed on this AMI"
+                        exit 1
+                    fi
 
-                        if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && \
-                           ! sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 && \
-                           ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && \
-                           ! sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+                    echo ""
+                    echo "===== AWS CLI ====="
 
-                            echo "APT locks are free."
-                            break
+                    if command -v aws >/dev/null 2>&1; then
+                        aws --version
+                    else
+                        echo "ERROR: AWS CLI is NOT installed on this AMI"
+                        exit 1
+                    fi
 
+                    echo ""
+                    echo "===== DOCKER ====="
+
+                    if command -v docker >/dev/null 2>&1; then
+                        docker --version
+                    else
+                        echo "ERROR: Docker is NOT installed on this AMI"
+                        exit 1
+                    fi
+
+                    echo ""
+                    echo "===== DOCKER SERVICE ====="
+
+                    if sudo systemctl is-active --quiet docker; then
+                        echo "Docker service is running"
+                    else
+                        echo "Docker service is not running."
+                        echo "Starting Docker..."
+
+                        sudo systemctl start docker
+
+                        if sudo systemctl is-active --quiet docker; then
+                            echo "Docker service started successfully"
+                        else
+                            echo "ERROR: Docker service could not be started"
+                            exit 1
                         fi
-
-                        echo "APT is busy. Waiting... ($i/60)"
-                        sleep 5
-
-                    done
+                    fi
 
                     echo ""
-                    echo "===== APT UPDATE ====="
+                    echo "===== ANSIBLE ====="
 
-                    sudo apt-get update -y
-
-                    echo ""
-                    echo "===== BASIC TOOLS ====="
-
-                    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                        curl \
-                        unzip \
-                        wget \
-                        gnupg \
-                        lsb-release \
-                        software-properties-common \
-                        git
+                    if command -v ansible >/dev/null 2>&1; then
+                        ansible --version | head -n 1
+                    else
+                        echo "ERROR: Ansible is NOT installed on this AMI"
+                        exit 1
+                    fi
 
                     echo ""
                     echo "===== GIT ====="
@@ -128,169 +167,34 @@ pipeline {
                     if command -v git >/dev/null 2>&1; then
                         git --version
                     else
-                        echo "Git installation failed."
+                        echo "ERROR: Git is NOT installed on this AMI"
                         exit 1
                     fi
 
                     echo ""
-                    echo "===== CURL / UNZIP ====="
+                    echo "===== CURL ====="
 
-                    command -v curl
-                    command -v unzip
-
-                    curl --version | head -1
-                    unzip -v | head -1
-
-                    echo ""
-                    echo "===== AWS CLI ====="
-
-                    if command -v aws >/dev/null 2>&1; then
-
-                        echo "AWS CLI already installed:"
-                        aws --version
-
+                    if command -v curl >/dev/null 2>&1; then
+                        curl --version | head -n 1
                     else
-
-                        echo "AWS CLI not found. Installing AWS CLI v2..."
-
-                        cd /tmp
-
-                        rm -rf aws awscliv2.zip
-
-                        curl -fsSL \
-                            "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
-                            -o awscliv2.zip
-
-                        unzip -q awscliv2.zip
-
-                        sudo ./aws/install
-
-                        rm -rf aws awscliv2.zip
-
-                        echo "AWS CLI installed:"
-                        aws --version
-
+                        echo "ERROR: curl is NOT installed on this AMI"
+                        exit 1
                     fi
 
                     echo ""
-                    echo "===== TERRAFORM ====="
+                    echo "===== UNZIP ====="
 
-                    if command -v terraform >/dev/null 2>&1; then
-
-                        echo "Terraform already installed:"
-                        terraform version
-
+                    if command -v unzip >/dev/null 2>&1; then
+                        unzip -v | head -n 1
                     else
-
-                        echo "Terraform not found. Installing Terraform..."
-
-                        TERRAFORM_VERSION="1.16.0"
-
-                        cd /tmp
-
-                        rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-                        rm -f terraform
-
-                        wget -q \
-                            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
-                            -O "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-
-                        unzip -o \
-                            "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-
-                        sudo mv terraform /usr/local/bin/terraform
-
-                        sudo chmod +x /usr/local/bin/terraform
-
-                        rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-
-                        echo "Terraform installed:"
-                        terraform version
-
-                    fi
-
-                    echo ""
-                    echo "===== DOCKER ====="
-
-                    if command -v docker >/dev/null 2>&1; then
-
-                        echo "Docker already installed:"
-                        docker --version
-
-                    else
-
-                        echo "Docker not found. Installing Docker..."
-
-                        sudo apt-get update -y
-
-                        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
-
-                        sudo systemctl enable docker
-                        sudo systemctl start docker
-
-                        echo "Docker installed:"
-                        docker --version
-
-                    fi
-
-                    echo ""
-                    echo "===== DOCKER SERVICE ====="
-
-                    if sudo systemctl is-active --quiet docker; then
-
-                        echo "Docker service is running"
-
-                    else
-
-                        echo "Docker service is not running. Starting..."
-
-                        sudo systemctl start docker
-
-                    fi
-
-                    sudo systemctl is-active docker
-
-                    echo ""
-                    echo "===== ANSIBLE ====="
-
-                    if command -v ansible >/dev/null 2>&1; then
-
-                        echo "Ansible already installed:"
-                        ansible --version
-
-                    else
-
-                        echo "Ansible not found. Installing Ansible..."
-
-                        sudo apt-get update -y
-
-                        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ansible
-
-                        echo "Ansible installed:"
-                        ansible --version
-
+                        echo "ERROR: unzip is NOT installed on this AMI"
+                        exit 1
                     fi
 
                     echo ""
                     echo "======================================"
-                    echo "ALL REQUIRED TOOLS ARE READY"
+                    echo "ALL REQUIRED TOOLS ARE AVAILABLE"
                     echo "======================================"
-
-                    echo ""
-                    echo "AWS CLI:"
-                    aws --version
-
-                    echo ""
-                    echo "Terraform:"
-                    terraform version
-
-                    echo ""
-                    echo "Docker:"
-                    docker --version
-
-                    echo ""
-                    echo "Ansible:"
-                    ansible --version | head -1
                 '''
             }
         }
@@ -302,6 +206,7 @@ pipeline {
 
         stage('Check AWS Identity') {
             steps {
+
                 sh '''
                     set -e
 
@@ -309,6 +214,8 @@ pipeline {
                     echo "AWS IDENTITY"
                     echo "======================================"
 
+                    echo ""
+                    echo "AWS CLI:"
                     aws --version
 
                     echo ""
@@ -317,11 +224,12 @@ pipeline {
 
                     echo ""
                     echo "AWS Caller Identity:"
-
                     aws sts get-caller-identity
 
                     echo ""
-                    echo "AWS credentials are working successfully."
+                    echo "======================================"
+                    echo "AWS AUTHENTICATION SUCCESSFUL"
+                    echo "======================================"
                 '''
             }
         }
@@ -333,7 +241,9 @@ pipeline {
 
         stage('Debug Terraform State') {
             steps {
+
                 dir('terraform') {
+
                     sh '''
                         set -e
 
@@ -351,20 +261,30 @@ pipeline {
 
                         echo ""
                         echo "TERRAFORM WORKSPACE:"
-                        terraform workspace show
 
-                        echo ""
-                        echo "TERRAFORM STATE:"
-                        terraform state list
+                        terraform workspace show
 
                         echo ""
                         echo "TERRAFORM FILES:"
                         ls -lah
 
                         echo ""
-                        echo "STATE FILE:"
-                        ls -lh terraform.tfstate 2>/dev/null || \
+                        echo "TERRAFORM STATE FILE:"
+
+                        if [ -f terraform.tfstate ]; then
+                            ls -lh terraform.tfstate
+                        else
                             echo "terraform.tfstate NOT FOUND"
+                        fi
+
+                        echo ""
+                        echo "TERRAFORM STATE LIST:"
+
+                        if [ -f terraform.tfstate ]; then
+                            terraform state list || true
+                        else
+                            echo "No local terraform.tfstate available."
+                        fi
 
                         echo ""
                         echo "======================================"
@@ -382,7 +302,9 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
+
                 dir('terraform') {
+
                     sh '''
                         set -e
 
@@ -390,6 +312,7 @@ pipeline {
                         echo "TERRAFORM INIT"
                         echo "======================================"
 
+                        echo ""
                         echo "Hostname:"
                         hostname
 
@@ -398,16 +321,16 @@ pipeline {
                         whoami
 
                         echo ""
-                        echo "Workspace:"
+                        echo "Working Directory:"
                         pwd
 
                         echo ""
-                        echo "Terraform:"
+                        echo "Terraform Version:"
                         terraform version
 
                         echo ""
                         echo "Terraform Files:"
-                        ls -la
+                        ls -lah
 
                         echo ""
                         echo "Running terraform init..."
@@ -415,7 +338,9 @@ pipeline {
                         terraform init -input=false
 
                         echo ""
-                        echo "Terraform init completed successfully."
+                        echo "======================================"
+                        echo "TERRAFORM INIT COMPLETED"
+                        echo "======================================"
                     '''
                 }
             }
@@ -428,7 +353,9 @@ pipeline {
 
         stage('Terraform Validate') {
             steps {
+
                 dir('terraform') {
+
                     sh '''
                         set -e
 
@@ -439,7 +366,9 @@ pipeline {
                         terraform validate
 
                         echo ""
-                        echo "Terraform configuration is valid."
+                        echo "======================================"
+                        echo "TERRAFORM VALIDATE SUCCESSFUL"
+                        echo "======================================"
                     '''
                 }
             }
@@ -452,7 +381,9 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
+
                 dir('terraform') {
+
                     sh '''
                         set -e
 
@@ -463,7 +394,9 @@ pipeline {
                         terraform plan -input=false
 
                         echo ""
-                        echo "Terraform plan completed successfully."
+                        echo "======================================"
+                        echo "TERRAFORM PLAN COMPLETED"
+                        echo "======================================"
                     '''
                 }
             }
@@ -476,7 +409,9 @@ pipeline {
 
         stage('Build Infrastructure') {
             steps {
+
                 dir('terraform') {
+
                     sh '''
                         set -e
 
@@ -492,6 +427,10 @@ pipeline {
                         echo "======================================"
                         echo "TERRAFORM APPLY COMPLETED"
                         echo "======================================"
+
+                        echo ""
+                        echo "Terraform Outputs:"
+                        terraform output
                     '''
                 }
             }
@@ -504,6 +443,7 @@ pipeline {
 
         stage('Get ECR Repository') {
             steps {
+
                 script {
 
                     env.ECR_REPO = sh(
@@ -520,6 +460,10 @@ pipeline {
 
                     echo "ECR Repository URL:"
                     echo "${env.ECR_REPO}"
+
+                    if (!env.ECR_REPO?.trim()) {
+                        error("ECR repository URL is empty")
+                    }
                 }
             }
         }
@@ -531,6 +475,7 @@ pipeline {
 
         stage('Get EC2 IP') {
             steps {
+
                 script {
 
                     env.EC2_PUBLIC_IP = sh(
@@ -546,6 +491,10 @@ pipeline {
                     echo "======================================"
 
                     echo "${env.EC2_PUBLIC_IP}"
+
+                    if (!env.EC2_PUBLIC_IP?.trim()) {
+                        error("EC2 public IP is empty")
+                    }
                 }
             }
         }
@@ -557,6 +506,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
+
                 sh '''
                     set -e
 
@@ -564,8 +514,13 @@ pipeline {
                     echo "DOCKER BUILD"
                     echo "======================================"
 
+                    echo ""
                     echo "Docker:"
                     sudo docker --version
+
+                    echo ""
+                    echo "Docker Service:"
+                    sudo systemctl is-active docker
 
                     echo ""
                     echo "Dockerfile:"
@@ -599,6 +554,7 @@ pipeline {
 
         stage('ECR Login') {
             steps {
+
                 sh '''
                     set -e
 
@@ -610,6 +566,7 @@ pipeline {
                         --query Account \
                         --output text)
 
+                    echo ""
                     echo "AWS Account:"
                     echo "$AWS_ACCOUNT_ID"
 
@@ -647,6 +604,7 @@ pipeline {
 
         stage('Docker Tag') {
             steps {
+
                 sh '''
                     set -e
 
@@ -677,6 +635,7 @@ pipeline {
 
         stage('Push Image to ECR') {
             steps {
+
                 sh '''
                     set -e
 
@@ -702,6 +661,7 @@ pipeline {
 
         stage('Verify ECR Image') {
             steps {
+
                 sh '''
                     set -e
 
@@ -744,11 +704,20 @@ pipeline {
 
                                 result = sh(
                                     script: """
-                                        ssh-keyscan -H ${env.EC2_PUBLIC_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
+                                        set +e
+
+                                        mkdir -p ~/.ssh
+                                        touch ~/.ssh/known_hosts
+
+                                        ssh-keyscan \
+                                            -H \
+                                            ${env.EC2_PUBLIC_IP} \
+                                            >> ~/.ssh/known_hosts 2>/dev/null || true
 
                                         ssh \
                                             -o ConnectTimeout=5 \
                                             -o StrictHostKeyChecking=no \
+                                            -o UserKnownHostsFile=/dev/null \
                                             ubuntu@${env.EC2_PUBLIC_IP} \
                                             'echo SSH connection successful'
                                     """,
@@ -761,7 +730,6 @@ pipeline {
                                 echo "SSH connection successful"
 
                                 return true
-
                             }
 
                             echo "EC2 SSH not ready yet..."
@@ -864,6 +832,7 @@ EOF
                         ssh \
                             -o ConnectTimeout=10 \
                             -o StrictHostKeyChecking=no \
+                            -o UserKnownHostsFile=/dev/null \
                             ubuntu@${env.EC2_PUBLIC_IP} '
                                 echo "===== SERVER ====="
                                 hostname
@@ -947,6 +916,7 @@ EOF
                         echo "DESTROY COMPLETED"
                         echo "======================================"
 
+                        echo ""
                         echo "Terraform-managed resources deleted."
                     '''
                 }
@@ -1003,7 +973,6 @@ EOF
             """
         }
 
-
         failure {
 
             echo """
@@ -1017,7 +986,6 @@ EOF
             ==========================================
             """
         }
-
 
         always {
 
