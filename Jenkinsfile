@@ -721,32 +721,29 @@ EOF
         // RUN ANSIBLE
         // ============================================================
 
-        stage('Run Ansible') {
-            steps {
+       stage('Run Ansible') {
+    steps {
+        sshagent(credentials: ['Ogust-26']) {
+            sh '''
+                set -e
+                echo "======================================"
+                echo "RUN ANSIBLE"
+                echo "======================================"
 
-                sshagent(credentials: ['Ogust-26']) {
+                ansible-playbook \
+                    -i ansible/inventory.ini \
+                    ansible/setup.yml \
+                    --private-key "${HOME}/.ssh/id_rsa" \
+                    --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "RUN ANSIBLE"
-                        echo "======================================"
-
-                        ansible-playbook \
-                            -i ansible/inventory.ini \
-                            ansible/setup.yml \
-                            --private-key "${HOME}/.ssh/id_rsa"
-
-                        echo ""
-                        echo "======================================"
-                        echo "ANSIBLE COMPLETED"
-                        echo "======================================"
-                    '''
-                }
-            }
+                echo ""
+                echo "======================================"
+                echo "ANSIBLE COMPLETED"
+                echo "======================================"
+            '''
         }
-
+    }
+}
 
         // ============================================================
         // VERIFY SERVER
