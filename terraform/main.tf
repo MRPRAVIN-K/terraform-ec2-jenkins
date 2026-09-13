@@ -171,3 +171,13 @@ resource "aws_ecr_repository" "app" {
     Managed     = "Terraform"
   }
 }
+
+terraform {
+  backend "s3" {
+    bucket         = "dynamic-ec2-tfstate-947402162351"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-locks"
+    encrypt        = true
+  }
+}
