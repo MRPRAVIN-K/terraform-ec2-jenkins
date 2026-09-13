@@ -736,8 +736,7 @@ EOF
                         ansible-playbook \
                             -i ansible/inventory.ini \
                             ansible/setup.yml \
-                            --private-key "${HOME}/.ssh/id_rsa" \
-                            -o
+                            --private-key "${HOME}/.ssh/id_rsa"
 
                         echo ""
                         echo "======================================"
