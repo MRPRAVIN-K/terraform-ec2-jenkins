@@ -3,7 +3,7 @@
 # ============================================================
 
 resource "aws_iam_role" "dynamic_ec2_role" {
-  name = "dynamic-ec2-ecr-role"
+  name = "dynamic-ec2-ecr-role-${var.build_id}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -22,9 +22,10 @@ resource "aws_iam_role" "dynamic_ec2_role" {
   })
 
   tags = {
-    Name    = "dynamic-ec2-ecr-role"
+    Name    = "dynamic-ec2-ecr-role-${var.build_id}"
     Project = "Jenkins-Terraform-Ansible"
     Managed = "Terraform"
+    BuildId = var.build_id
   }
 }
 
@@ -76,6 +77,6 @@ resource "aws_iam_role_policy" "ecr_push_policy" {
 # ============================================================
 
 resource "aws_iam_instance_profile" "dynamic_ec2_profile" {
-  name = "dynamic-ec2-ecr-profile"
+  name = "dynamic-ec2-ecr-profile-${var.build_id}"
   role = aws_iam_role.dynamic_ec2_role.name
 }
