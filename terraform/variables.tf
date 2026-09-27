@@ -21,3 +21,9 @@ variable "allowed_ssh_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "build_id" {
+  description = "Unique identifier per Jenkins build, used to avoid resource name collisions during concurrent runs"
+  type        = string
+  default     = "manual"
+}
